@@ -2,6 +2,7 @@ package com.codegnan.app.javawebapp06.database;
 
 import com.codegnan.app.javawebapp06.entity.Credentials;
 import com.codegnan.app.javawebapp06.entity.User;
+import org.mindrot.jbcrypt.BCrypt;
 
 import java.sql.Connection;
 import java.sql.PreparedStatement;
@@ -15,7 +16,7 @@ public class UserDatabase {
     public List<User> getAllUsers() {
         List<User> usersList = new ArrayList<>();
 
-        String sqlQuery = "SELECT `u`.user_id, `u`.first_name, `u`.last_name, `c`.username, `c`.login_password FROM users `u` ";
+        String sqlQuery = "SELECT `u`.user_id, `u`.first_name, `u`.last_name, `c`.username FROM users `u` ";
         sqlQuery += "INNER JOIN credentials `c` ON `u`.credentials_id = `c`.credentials_id;";
 
         try (Connection connection = DatabaseUtility.getDatabaseConnection();
@@ -29,7 +30,6 @@ public class UserDatabase {
                 user.setLastName(resultSet.getString(3));
                 Credentials credentials = new Credentials();
                 credentials.setUsername(resultSet.getString(4));
-                credentials.setLoginPassword(resultSet.getString(5));
                 user.setCredentials(credentials);
 
                 usersList.add(user);
@@ -54,8 +54,9 @@ public class UserDatabase {
             connection.setAutoCommit(false);
 
             Credentials credentials = user.getCredentials();
+            String hashedPassword = BCrypt.hashpw(credentials.getLoginPassword(), BCrypt.gensalt());
             preparedStatement1.setString(1, credentials.getUsername());
-            preparedStatement1.setString(2, credentials.getLoginPassword());
+            preparedStatement1.setString(2, hashedPassword);
             int numOfRows = preparedStatement1.executeUpdate();
             if (numOfRows != 0) {
                 ResultSet resultSet = preparedStatement1.getGeneratedKeys();
@@ -82,22 +83,28 @@ public class UserDatabase {
     public User findByUsernameAndLoginPassword(String username, String loginPassword) {
         User user = null;
 
-        String sqlQuery = "SELECT `u`.first_name, `u`.last_name FROM users `u` ";
+        String sqlQuery = "SELECT `u`.first_name, `u`.last_name, `c`.login_password FROM users `u` ";
         sqlQuery += "INNER JOIN credentials `c` ON `u`.credentials_id = `c`.credentials_id ";
-        sqlQuery += "WHERE `c`.username = '" + username + "' AND `c`.login_password = '" + loginPassword + "';";
+        sqlQuery += "WHERE `c`.username = ?;";
 
         try (Connection connection = DatabaseUtility.getDatabaseConnection();
-             Statement statement = connection.createStatement();
-             ResultSet resultSet = statement.executeQuery(sqlQuery)) {
+             PreparedStatement preparedStatement = connection.prepareStatement(sqlQuery)) {
+
+            preparedStatement.setString(1, username);
+
+            ResultSet resultSet = preparedStatement.executeQuery();
 
             if (resultSet.next()) {
-                user = new User();
-                user.setFirstName(resultSet.getString(1));
-                user.setLastName(resultSet.getString(2));
-                Credentials credentials = new Credentials();
-                credentials.setUsername(username);
-                credentials.setLoginPassword(loginPassword);
-                user.setCredentials(credentials);
+                String storedHash = resultSet.getString(3);
+
+                if (BCrypt.checkpw(loginPassword, storedHash)) {
+                    user = new User();
+                    user.setFirstName(resultSet.getString(1));
+                    user.setLastName(resultSet.getString(2));
+                    Credentials credentials = new Credentials();
+                    credentials.setUsername(username);
+                    user.setCredentials(credentials);
+                }
             }
         } catch (SQLException sqlEx) {
             sqlEx.printStackTrace();
@@ -109,12 +116,13 @@ public class UserDatabase {
     public boolean updateLoginPasswordByUsername(String username, String newLoginPassword) {
         boolean isPasswordUpdated = false;
 
+        String hashedPassword = BCrypt.hashpw(newLoginPassword, BCrypt.gensalt());
         String sqlQuery = "UPDATE credentials SET login_password=? WHERE username=?";
 
         try (Connection connection = DatabaseUtility.getDatabaseConnection();
              PreparedStatement preparedStatement = connection.prepareStatement(sqlQuery)) {
 
-            preparedStatement.setString(1, newLoginPassword);
+            preparedStatement.setString(1, hashedPassword);
             preparedStatement.setString(2, username);
             int numOfRows = preparedStatement.executeUpdate();
             if (numOfRows != 0) {
