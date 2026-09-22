@@ -26,7 +26,6 @@
         <th>First Name</th>
         <th>Last Name</th>
         <th>Username</th>
-        <th>Login Password</th>
     </tr>
 
     <%
@@ -38,7 +37,6 @@
                 <td><%= user.getFirstName() %></td>
                 <td><%= user.getLastName() %></td>
                 <td><%= credentials.getUsername() %></td>
-                <td><%= credentials.getLoginPassword() %></td>
             </tr>
     <%
         }
